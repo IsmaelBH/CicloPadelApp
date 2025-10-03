@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Ciclo Padel",
+    "slug": "ciclopadelapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo-2.png",
+    "scheme": "ciclopadel",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "uy.ciclopadel.app"
+    },
+    "android": {
+      "package": "uy.ciclopadel.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-barcode-scanner",
+      "expo-sqlite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "54d714a6-d3ab-4168-b892-b5daa2096797"
+      }
+    },
+    "owner": "ismael21986"
+  }
+}

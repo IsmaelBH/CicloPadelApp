@@ -1,0 +1,1 @@
+export const PROFILE_IMAGE_KEY = 'profile_image';
