@@ -28,19 +28,20 @@ const HomeScreen = () => {
                 resizeMode="contain"
             />
             <View style={styles.iconRow}>
-                <TouchableOpacity onPress={() => navigation.navigate('Store')}>
-                    <Image source={require('../../assets/icons/store.png')} style={styles.icon} />
-                </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.navigate('QrScreen')}>
                     <Image source={require('../../assets/icons/qr.png')} style={styles.icon} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('Match')}>
+                    <Image source={require('../../assets/icons/paleta.png')} style={styles.icon} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('Champions')}>
+                    <Image source={require('../../assets/icons/torneo.png')} style={styles.icon} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
                     <Image source={require('../../assets/icons/profile.png')} style={styles.icon} />
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => navigation.navigate('Cart')}>
-                    <Image source={require('../../assets/icons/cart.png')} style={styles.icon} />
-                </TouchableOpacity>
+
             </View>
         </View>
     );
