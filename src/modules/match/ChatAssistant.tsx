@@ -1,223 +1,239 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, FlatList } from 'react-native';
-import { MotiView } from 'moti';
+// src/modules/match/ChatAssistant.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Modal, View, Text, TouchableOpacity, ScrollView,
+    StyleSheet, Image, Animated, Easing, Platform, StatusBar
+} from 'react-native';
 import { Category } from './types';
+import { getFreeHoursByTurn } from './availability';
 
-interface ChatAssistantProps {
+type Turn = 'mañana' | 'tarde' | 'noche';
+type CourtId = 'court_1' | 'court_2' | 'court_3';
+
+type Props = {
     visible: boolean;
     onClose: () => void;
     date: string;
-    getFreeSlots: (date: string) => Array<{ courtId: string; start: string }>;
-    onCreateMatch: (args: {
-        date: string;
+    // Ya no pedimos la duración aquí; el usuario la elige en el chat
+    onConfirm: (payload: {
+        turn: Turn;
+        hour: string;
         duration: 90 | 120;
-        courtId: string;
-        start: string;
-        category: Category | string;
+        category: Category;
+        courtId: CourtId;
     }) => void;
-}
+};
 
-type Msg = { id: number; text: string; from: 'bot' | 'user' };
+export default function ChatAssistant({ visible, onClose, date, onConfirm }: Props) {
+    const [step, setStep] =
+        useState<'intro' | 'turn' | 'duration' | 'hour' | 'category' | 'court' | 'summary'>('intro');
 
-export default function ChatAssistant({
-    visible,
-    onClose,
-    date,
-    getFreeSlots,
-    onCreateMatch,
-}: ChatAssistantProps) {
-    const [messages, setMessages] = useState<Msg[]>([]);
-    const [step, setStep] = useState(0);
-    const [typing, setTyping] = useState(true);
+    const [turn, setTurn] = useState<Turn | null>(null);
+    const [duration, setDuration] = useState<90 | 120 | null>(null);
+    const [hour, setHour] = useState<string | null>(null);
+    const [category, setCategory] = useState<Category | null>(null);
+    const [court, setCourt] = useState<CourtId | null>(null);
+
+    const [loadingHours, setLoadingHours] = useState(false);
+    const [freeOptions, setFreeOptions] =
+        useState<Array<{ courtId: CourtId; start: string; end: string }>>([]);
+
+    const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        if (visible) startConversation();
-    }, [visible]);
+        if (visible) {
+            fadeAnim.setValue(0);
+            setStep('intro');
+            setTurn(null);
+            setDuration(null);
+            setHour(null);
+            setCategory(null);
+            setCourt(null);
+            setFreeOptions([]);
 
-    const pushBot = (text: string, delay = 1100) => {
-        setTyping(true);
-        setTimeout(() => {
-            setMessages(prev => [...prev, { id: Date.now(), text, from: 'bot' }]);
-            setTyping(false);
-        }, delay);
-    };
-
-    const greeting = () => {
-        const h = new Date().getHours();
-        if (h < 12) return '¡Buen día! ☀️';
-        if (h < 19) return '¡Buenas tardes! 👋';
-        return '¡Buenas noches! 🌙';
-    };
-
-    const startConversation = () => {
-        setMessages([]);
-        setStep(0);
-        setTyping(true);
-
-        pushBot(greeting(), 600);
-        setTimeout(() => {
-            pushBot('¿Con ganas de jugar hoy? 😎', 900);
-            setStep(1);
-        }, 1600);
-    };
-
-    const handleOption = (option: string) => {
-        // Helper para agregar mensaje del usuario
-        const pushUser = (text: string) =>
-            setMessages(prev => [...prev, { id: Date.now(), text, from: 'user' }]);
-
-        if (step === 1) {
-            pushUser(option);
-            pushBot('¡Genial! ¿Qué turno preferís?', 700);
-            setStep(2);
-            return;
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 280,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+            }).start();
+        } else {
+            fadeAnim.setValue(0);
         }
+    }, [visible, fadeAnim]);
 
-        if (step === 2) {
-            pushUser(option);
-            pushBot('Buscando horarios disponibles…');
-            setTimeout(() => {
-                const slots = getFreeSlots(date);
-                if (slots.length === 0) {
-                    pushBot('No hay horarios en ese rango. Probemos con otro turno.');
-                    return;
-                }
-                pushBot(
-                    'Encontré estos:\n' +
-                    slots.map(s => `• ${labelCourt(s.courtId)} — ${s.start}`).join('\n'),
-                    800
+    // cada vez que tenemos turn + duration, cargamos horas libres reales
+    useEffect(() => {
+        (async () => {
+            if (!turn || !duration) return;
+            setLoadingHours(true);
+            try {
+                const opts = await getFreeHoursByTurn({ date, duration, turn });
+                setFreeOptions(opts);
+            } finally {
+                setLoadingHours(false);
+            }
+        })();
+    }, [date, turn, duration]);
+
+    const headerTopPadding = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+
+    const handleConfirm = () => {
+        if (turn && hour && duration && category && court) {
+            Animated.timing(fadeAnim, { toValue: 0, duration: 220, useNativeDriver: true })
+                .start(() => {
+                    onConfirm({ turn, hour, duration, category, courtId: court });
+                });
+        }
+    };
+
+    const renderStep = () => {
+        switch (step) {
+            case 'intro':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Ciclo Asistente 🤖</Text>
+                        <Text style={s.msg}>¡Buen día! ¿Con ganas de jugar?</Text>
+                        <View style={s.btnRow}>
+                            <TouchableOpacity style={s.chip} onPress={() => setStep('turn')}>
+                                <Text style={s.chipText}>Sí, claro</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={s.chipSecondary}
+                                onPress={() => Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(onClose)}>
+                                <Text style={s.chipText}>No por ahora</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 );
-                setStep(3);
-            }, 1200);
-            return;
-        }
 
-        if (step === 3) {
-            // El usuario elige uno de los slots mostrados (por ahora free text)
-            pushUser(option);
-            pushBot('Perfecto. ¿En qué categoría jugás? 🎾', 700);
-            setStep(4);
-            return;
-        }
+            case 'turn':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Genial 😎</Text>
+                        <Text style={s.msg}>¿Qué turno preferís?</Text>
+                        <View style={s.btnRow}>
+                            {(['mañana', 'tarde', 'noche'] as Turn[]).map((t) => (
+                                <TouchableOpacity key={t} style={s.chip} onPress={() => { setTurn(t); setStep('duration'); }}>
+                                    <Text style={s.chipText}>{t}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                );
 
-        if (step === 4) {
-            pushUser(option);
-            pushBot('¡Excelente! Armando tu partido…', 700);
+            case 'duration':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Turno: {turn}</Text>
+                        <Text style={s.msg}>Elegí la duración</Text>
+                        <View style={s.btnRow}>
+                            {[90, 120].map((d) => (
+                                <TouchableOpacity key={d} style={s.chip}
+                                    onPress={() => { setDuration(d as 90 | 120); setStep('hour'); }}>
+                                    <Text style={s.chipText}>{d} min</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                );
 
-            // Para el demo, tomamos el primer slot disponible
-            const [first] = getFreeSlots(date);
-            const courtId = first?.courtId ?? 'court_1';
-            const start = first?.start ?? '09:00';
+            case 'hour':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Duración: {duration} min</Text>
+                        <Text style={s.msg}>Elegí la hora libre:</Text>
 
-            onCreateMatch({
-                date,
-                duration: 90,
-                courtId,
-                start,
-                category: (option as Category) ?? '5ta',
-            });
+                        {loadingHours ? (
+                            <Text style={[s.msg, { opacity: 0.7 }]}>Buscando disponibilidad…</Text>
+                        ) : freeOptions.length === 0 ? (
+                            <Text style={s.msg}>No hay horarios libres en este turno.</Text>
+                        ) : (
+                            <ScrollView style={{ maxHeight: 260 }}>
+                                {freeOptions.map((opt) => (
+                                    <TouchableOpacity key={`${opt.courtId}-${opt.start}`} style={s.option}
+                                        onPress={() => { setHour(opt.start); setCourt(opt.courtId); setStep('category'); }}>
+                                        <Text style={s.optionText}>
+                                            {opt.start} • {String(opt.courtId).replace('_', ' ').toUpperCase()}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        )}
+                    </View>
+                );
 
-            setTimeout(() => {
-                pushBot('✅ Partido creado. Te avisamos cuando se complete.');
-                setTimeout(() => onClose(), 1600);
-            }, 1200);
+            case 'category':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Hora: {hour} • {String(court).replace('_', ' ').toUpperCase()}</Text>
+                        <Text style={s.msg}>¿En qué categoría jugás?</Text>
+                        <View style={s.btnRow}>
+                            {(['6ta', '5ta', '4ta'] as Category[]).map((c) => (
+                                <TouchableOpacity key={c} style={s.chip} onPress={() => { setCategory(c); setStep('summary'); }}>
+                                    <Text style={s.chipText}>{c}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                );
+
+            case 'summary':
+                return (
+                    <View style={s.messageContainer}>
+                        <Text style={s.bot}>Confirmemos 🎾</Text>
+                        <Text style={s.msg}>
+                            {`Fecha: ${date}\nTurno: ${turn}\nHora: ${hour}\nDuración: ${duration} min\nCategoría: ${category}\nCancha: ${court}`}
+                        </Text>
+                        <View style={s.btnRow}>
+                            <TouchableOpacity style={s.chip} onPress={handleConfirm}>
+                                <Text style={s.chipText}>Confirmar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={s.chipSecondary} onPress={() => setStep('hour')}>
+                                <Text style={s.chipText}>Cambiar hora</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                );
         }
     };
-
-    if (!visible) return null;
 
     return (
-        <View style={styles.container}>
-            <FlatList
-                data={messages}
-                keyExtractor={item => String(item.id)}
-                renderItem={({ item }) => (
-                    <MotiView
-                        from={{ opacity: 0, translateY: 10 }}
-                        animate={{ opacity: 1, translateY: 0 }}
-                        transition={{ type: 'timing', duration: 350 }}
-                        style={[styles.msg, item.from === 'bot' ? styles.bot : styles.user]}
-                    >
-                        <Text style={item.from === 'bot' ? styles.botText : styles.userText}>{item.text}</Text>
-                    </MotiView>
-                )}
-                contentContainerStyle={{ paddingBottom: 14 }}
-            />
-
-            {typing && (
-                <View style={styles.typingRow}>
-                    <Image source={require('../../../assets/icons/bot.png')} style={styles.avatar} />
-                    <Text style={styles.typingText}>escribiendo…</Text>
+        <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+            <Animated.View style={[s.backdrop, { opacity: fadeAnim }]}>
+                <View style={[s.card, { paddingTop: 16 + (Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) }]}>
+                    <View style={s.header}>
+                        <Image source={require('../../../assets/icons/bot.png')} style={s.avatar} />
+                        <View>
+                            <Text style={s.title}>Ciclo Asistente</Text>
+                            <Text style={s.subtitle}>Te ayuda a armar tu partido</Text>
+                        </View>
+                    </View>
+                    <View style={s.divider} />
+                    <ScrollView style={{ flex: 1 }}>{renderStep()}</ScrollView>
                 </View>
-            )}
-
-            <View style={styles.options}>
-                {step === 1 && (
-                    <>
-                        <Btn label="¡Sí, claro!" onPress={() => handleOption('¡Sí, claro!')} />
-                        <BtnOutline label="Más tarde" onPress={onClose} />
-                    </>
-                )}
-
-                {step === 2 && (
-                    <>
-                        <Btn label="Mañana" onPress={() => handleOption('Turno mañana')} />
-                        <Btn label="Tarde" onPress={() => handleOption('Turno tarde')} />
-                        <Btn label="Noche" onPress={() => handleOption('Turno noche')} />
-                    </>
-                )}
-
-                {step === 4 && (
-                    <>
-                        <Btn label="6ta" onPress={() => handleOption('6ta')} />
-                        <Btn label="5ta" onPress={() => handleOption('5ta')} />
-                        <Btn label="4ta" onPress={() => handleOption('4ta')} />
-                    </>
-                )}
-            </View>
-        </View>
+            </Animated.View>
+        </Modal>
     );
 }
 
-const Btn = ({ label, onPress }: { label: string; onPress: () => void }) => (
-    <TouchableOpacity style={styles.btn} onPress={onPress}>
-        <Text style={styles.btnText}>{label}</Text>
-    </TouchableOpacity>
-);
+const s = StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center' },
+    card: { width: '92%', height: '86%', backgroundColor: '#101010', borderRadius: 20, paddingHorizontal: 18, paddingBottom: 18, overflow: 'hidden' },
+    header: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+    avatar: { width: 44, height: 44, marginRight: 10 },
+    title: { fontSize: 18, fontWeight: '800', color: '#fff' },
+    subtitle: { fontSize: 13, color: '#A7B0BA' },
+    divider: { height: 1, backgroundColor: '#242424', marginVertical: 8 },
 
-const BtnOutline = ({ label, onPress }: { label: string; onPress: () => void }) => (
-    <TouchableOpacity style={styles.btnOutline} onPress={onPress}>
-        <Text style={styles.btnOutlineText}>{label}</Text>
-    </TouchableOpacity>
-);
+    messageContainer: { marginVertical: 10 },
+    bot: { color: '#3FA7FF', fontWeight: 'bold', marginBottom: 5 },
+    msg: { color: '#fff', marginBottom: 10, fontSize: 15 },
 
-const labelCourt = (id: string) =>
-    id === 'court_1' ? 'Cancha 1' : id === 'court_2' ? 'Cancha 2' : 'Cancha 3';
+    btnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: { backgroundColor: '#3FA7FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, margin: 4 },
+    chipSecondary: { backgroundColor: '#1F1F1F', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, margin: 4 },
+    chipText: { color: '#fff', fontWeight: '700' },
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0B0B0B', padding: 16 },
-    msg: { marginVertical: 6, padding: 12, borderRadius: 12, maxWidth: '85%' },
-    bot: { backgroundColor: '#1E88E5', alignSelf: 'flex-start' },
-    user: { backgroundColor: '#E0E0E0', alignSelf: 'flex-end' },
-    botText: { color: '#fff' },
-    userText: { color: '#000' },
-    typingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-    avatar: { width: 28, height: 28, marginRight: 8 },
-    typingText: { color: '#9AA3AF' },
-    options: { marginTop: 12 },
-    btn: {
-        backgroundColor: '#1E88E5',
-        padding: 12,
-        borderRadius: 10,
-        marginBottom: 8,
-    },
-    btnText: { color: '#fff', textAlign: 'center', fontWeight: '700' },
-    btnOutline: {
-        borderWidth: 1,
-        borderColor: '#1E88E5',
-        padding: 12,
-        borderRadius: 10,
-        marginBottom: 8,
-    },
-    btnOutlineText: { color: '#1E88E5', textAlign: 'center', fontWeight: '700' },
+    option: { backgroundColor: '#161616', padding: 12, borderRadius: 12, marginVertical: 5 },
+    optionText: { color: '#fff', textAlign: 'center', fontWeight: '600' },
 });

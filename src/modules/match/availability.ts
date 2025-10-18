@@ -1,45 +1,88 @@
-import { addMinutes, generateStarts, overlaps } from './time';
-import { Category, Court, FixedBooking, MatchDoc } from './types';
+// src/modules/match/availability.ts
+import { addMinutes, overlaps } from './time';
+import { Category, FixedBooking, MatchDoc } from './types';
+import { fetchDayFixed, fetchDayMatches } from './api';
 
-interface Params {
-    date: string;                        // 'YYYY-MM-DD'
-    duration: 90 | 120;
-    courtId?: Court['id'];               // si no, todas
-    category: Category;                  // la del usuario (filtrado visual)
-    now?: Date;
+type Turn = 'mañana' | 'tarde' | 'noche';
+type CourtId = 'court_1' | 'court_2' | 'court_3';
+
+const TURN_RANGES: Record<Turn, { start: string; end: string }> = {
+    mañana: { start: '09:00', end: '12:00' },
+    tarde: { start: '12:00', end: '18:00' },
+    noche: { start: '18:00', end: '23:00' },
+};
+
+function toMins(hhmm: string) {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+}
+function toHHMM(mins: number) {
+    const h = String(Math.floor(mins / 60)).padStart(2, '0');
+    const m = String(mins % 60).padStart(2, '0');
+    return `${h}:${m}`;
 }
 
-export function computeAvailability(params: {
-    date: string,
-    duration: 90 | 120,
-    courtIds: Court['id'][],
-    matches: MatchDoc[],                 // ya filtrados por date
-    fixed: FixedBooking[],               // ya filtrados por date/weekday resuelto
-    now?: Date
+function generateStartsInRange(rangeStart: string, rangeEnd: string, duration: 90 | 120) {
+    const step = 30; // cada media hora
+    const out: Array<{ start: string; end: string }> = [];
+    for (let t = toMins(rangeStart); t + duration <= toMins(rangeEnd); t += step) {
+        const start = toHHMM(t);
+        const end = toHHMM(t + duration);
+        out.push({ start, end });
+    }
+    return out;
+}
+
+export async function getFreeHoursByTurn(params: {
+    date: string;
+    duration: 90 | 120;
+    turn: Turn;
+    category?: Category; // por si luego querés filtrar por categoría
 }) {
-    const { date, duration, courtIds, matches, fixed, now = new Date() } = params;
-    const result: Record<Court['id'], Array<{ start: string; end: string }>> = {
-        court_1: [], court_2: [], court_3: []
+    const { date, duration, turn } = params;
+
+    const [matches, fixed] = await Promise.all([
+        fetchDayMatches(date),
+        fetchDayFixed(date),
+    ]);
+
+    // Pre-indexado por cancha
+    const byCourt: Record<CourtId, { matches: MatchDoc[]; fixed: FixedBooking[] }> = {
+        court_1: { matches: [], fixed: [] },
+        court_2: { matches: [], fixed: [] },
+        court_3: { matches: [], fixed: [] },
     };
 
-    for (const courtId of courtIds) {
-        const mOfCourt = matches.filter(m => m.courtId === courtId && m.status !== 'cancelado');
-        const fOfCourt = fixed.filter(f => f.courtId === courtId);
+    for (const m of matches) byCourt[m.courtId].matches.push(m);
+    for (const f of fixed) byCourt[f.courtId].fixed.push(f);
 
-        outer:
-        for (const { start, end } of generateStarts(duration, date, now)) {
-            // solape con matches
-            for (const m of mOfCourt) {
-                if (overlaps(start, end, m.start, m.end)) continue outer;
-            }
-            // solape con fixedBookings
-            for (const f of fOfCourt) {
+    const range = TURN_RANGES[turn];
+
+    // Por cada cancha verificamos qué inicios están libres; devolvemos tuplas (courtId, start)
+    const options: Array<{ courtId: CourtId; start: string; end: string }> = [];
+
+    (Object.keys(byCourt) as CourtId[]).forEach((courtId) => {
+        const starts = generateStartsInRange(range.start, range.end, duration);
+
+        starts.forEach(({ start, end }) => {
+            // check fijos
+            const hitFixed = byCourt[courtId].fixed.some((f) => {
                 const fEnd = addMinutes(f.start, f.duration);
-                if (overlaps(start, end, f.start, fEnd)) continue outer;
-            }
-            result[courtId].push({ start, end });
-        }
-    }
+                return overlaps(start, end, f.start, fEnd);
+            });
+            if (hitFixed) return;
 
-    return result;
+            // check matches (no cancelados)
+            const hitMatch = byCourt[courtId].matches.some((m) => {
+                if (m.status === 'cancelado') return false;
+                return overlaps(start, end, m.start, m.end);
+            });
+            if (hitMatch) return;
+
+            options.push({ courtId, start, end });
+        });
+    });
+
+    return options.sort((a, b) => a.start.localeCompare(b.start));
 }
+

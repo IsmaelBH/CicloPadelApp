@@ -1,71 +1,96 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-
-// UI (chat)
+import { Alert, StatusBar, View, Share, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import ChatAssistant from '../modules/match/ChatAssistant';
-
-// Lógica de match
 import { createMatchAtomic } from '../modules/match/api';
-import { Category } from '../modules/match/types';
 
 export default function MatchScreen() {
+    const [chatOpen, setChatOpen] = useState(true);
     const [date] = useState<string>(new Date().toISOString().split('T')[0]);
-    const [chatOpen, setChatOpen] = useState(true); // 👉 el bot abre de una
 
-    // Simulá slots libres por ahora
-    const getFreeSlots = (d: string) => [
-        { courtId: 'court_1', start: '09:00' },
-        { courtId: 'court_2', start: '10:30' },
-        { courtId: 'court_3', start: '12:00' },
-    ];
+    // guardamos el último partido creado para invitar
+    const [lastMatch, setLastMatch] = useState<{
+        id: string;
+        hour: string;
+        category: '6ta' | '5ta' | '4ta';
+        courtId: 'court_1' | 'court_2' | 'court_3';
+    } | null>(null);
 
-    // 👉 Handler que ahora incluye "creator" (obligatorio para createMatchAtomic)
-    const handleCreateMatch = async (args: {
-        date: string;
+    const handleAssistantConfirm = async (payload: {
+        turn: 'mañana' | 'tarde' | 'noche';
+        hour: string;
         duration: 90 | 120;
-        courtId: string;
-        start: string;
-        category: Category | string;
+        category: '6ta' | '5ta' | '4ta';
+        courtId: 'court_1' | 'court_2' | 'court_3';
     }) => {
         try {
-            // TODO: si tenés auth, reemplazá este objeto por el usuario real
-            const creator = {
-                uid: 'demo-uid',
-                name: 'Jugador Demo',
-                photoUrl: null as string | null,
-            };
-
-            await createMatchAtomic({
-                date: args.date,
-                duration: args.duration,
-                courtId: args.courtId as any,
-                start: args.start,
-                category: (args.category as Category) ?? '5ta',
-                creator,
+            const user = { uid: 'demo', name: 'Ismael', photoUrl: null };
+            const res = await createMatchAtomic({
+                date,
+                courtId: payload.courtId,
+                start: payload.hour,
+                duration: payload.duration,
+                category: payload.category,
+                creator: user,
             });
 
-            console.log('✅ Partido creado:', args);
-        } catch (err) {
-            console.error('❌ Error creando partido', err);
+            setChatOpen(false);
+            setLastMatch({
+                id: res.matchId,
+                hour: payload.hour,
+                category: payload.category,
+                courtId: payload.courtId,
+            });
+
+            Alert.alert('Listo ✅', `Partido creado en ${payload.courtId} a las ${payload.hour} (${payload.category}).`);
+        } catch (err: any) {
+            Alert.alert('Error', err?.message ?? 'No se pudo crear el partido');
         }
     };
 
+    const invite = async () => {
+        if (!lastMatch) return;
+        const courtLabel =
+            lastMatch.courtId === 'court_1' ? 'Cancha 1' :
+                lastMatch.courtId === 'court_2' ? 'Cancha 2' : 'Cancha 3';
+
+        await Share.share({
+            message:
+                `¡Te invito a jugar pádel en Ciclo!\n` +
+                `Fecha: ${date}\nHora: ${lastMatch.hour}\nCategoría: ${lastMatch.category}\n${courtLabel}\n\n` +
+                `Código del partido: ${lastMatch.id}`,
+        });
+    };
+
     return (
-        <View style={styles.container}>
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <StatusBar barStyle="light-content" />
             <ChatAssistant
                 visible={chatOpen}
                 onClose={() => setChatOpen(false)}
                 date={date}
-                getFreeSlots={getFreeSlots}
-                onCreateMatch={handleCreateMatch}
+                onConfirm={handleAssistantConfirm}
             />
 
-            {/* Cuando cierres el chat, acá irá tu grilla real */}
-            {!chatOpen && <View style={{ flex: 1, backgroundColor: '#111' }} />}
+            {lastMatch && (
+                <TouchableOpacity style={styles.inviteFab} onPress={invite}>
+                    <Text style={styles.inviteFabText}>Invitar</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0B0B0B' },
+    inviteFab: {
+        position: 'absolute',
+        right: 18,
+        bottom: 28,
+        backgroundColor: '#3FA7FF',
+        borderRadius: 24,
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        elevation: 6,
+    },
+    inviteFabText: { color: '#0B1118', fontWeight: '800' },
 });
+
