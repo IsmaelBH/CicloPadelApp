@@ -1,7 +1,5 @@
-import { db } from '@/src/firebase/firebase';
-import {
-    collection, doc, getDocs, query, runTransaction, where,
-} from 'firebase/firestore';
+import { collection, doc, getDocs, query, runTransaction, where } from 'firebase/firestore';
+import { db } from '../../firebase/firebase';
 import { addMinutes, overlaps } from './time';
 import { Category, Court, FixedBooking, MatchDoc } from './types';
 
@@ -30,6 +28,7 @@ export async function createMatchAtomic(params: {
 
     return runTransaction(db, async (tx) => {
         const [matches, fixed] = await Promise.all([fetchDayMatches(date), fetchDayFixed(date)]);
+
         for (const m of matches.filter(m => m.courtId === courtId && m.status !== 'cancelado')) {
             if (overlaps(start, end, m.start, m.end)) throw new Error('Horario ocupado en esta cancha.');
         }
@@ -63,9 +62,9 @@ export async function joinMatchAtomic(params: {
     const { matchId, user } = params;
     return runTransaction(db, async (tx) => {
         const mRef = doc(db, 'matches', matchId);
-        const mSnap = await tx.get(mRef);
-        if (!mSnap.exists()) throw new Error('Match no encontrado');
-        const m = mSnap.data() as MatchDoc;
+        const snap = await tx.get(mRef);
+        if (!snap.exists()) throw new Error('Match no encontrado');
+        const m = snap.data() as MatchDoc;
 
         const players = Array.isArray(m.players) ? [...m.players] : [];
         if (m.category !== user.category) throw new Error('Categoría distinta al partido.');

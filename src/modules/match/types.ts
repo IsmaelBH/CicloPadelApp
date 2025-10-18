@@ -9,7 +9,6 @@ export interface Court {
 export interface FixedBooking {
     id: string;
     courtId: Court['id'];
-    // uno u otro:
     weekday?: number | null; // 0..6
     date?: string | null;    // 'YYYY-MM-DD'
     start: string;           // 'HH:mm'
@@ -22,19 +21,19 @@ export interface MatchPlayer {
     uid: string;
     name: string;
     photoUrl?: string | null;
-    joinedAt: number; // unix
+    joinedAt: number; // unix seconds
 }
 
 export interface MatchDoc {
     id: string;
-    date: string;                 // 'YYYY-MM-DD'
+    date: string;               // YYYY-MM-DD
     courtId: Court['id'];
-    start: string;                // 'HH:mm'
-    end: string;                  // 'HH:mm'
+    start: string;              // HH:mm
+    end: string;                // HH:mm
     duration: 90 | 120;
     category: Category;
     status: 'en_formacion' | 'completa' | 'cancelado';
     players: MatchPlayer[];
     createdBy: string;
-    createdAt: number;            // unix
+    createdAt: number;
 }

@@ -42,7 +42,7 @@ export function buildDayGrid(params: {
                     state: 'fixed',
                     fixed: {
                         start: fixedHit.start,
-                        end: addMinutes(fixedHit.start, fixedHit.duration), // <- FIX: usar fixedHit.duration
+                        end: addMinutes(fixedHit.start, fixedHit.duration), // <- FIX correcto
                         note: fixedHit.note ?? null,
                     },
                 });

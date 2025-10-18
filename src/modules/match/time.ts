@@ -1,6 +1,6 @@
 export const DAY_OPEN = '09:00';
 export const DAY_CLOSE = '23:00';
-export const LEAD_MINUTES = 30;
+export const LEAD_MINUTES = 30; // hoy, no ofrecer inicios antes de +30'
 export type Duration = 90 | 120;
 
 const toMinutes = (hhmm: string) => {
@@ -26,16 +26,16 @@ export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: str
 export function* generateStarts(duration: Duration, dateISO: string, now: Date) {
     const open = toMinutes(DAY_OPEN);
     const close = toMinutes(DAY_CLOSE);
-    const step = 30; // minutos
+    const step = 30;
 
-    // lead time (solo si dateISO es hoy)
     const isToday = new Date().toISOString().slice(0, 10) === dateISO;
-    const leadCut = isToday ? Math.ceil((now.getHours() * 60 + now.getMinutes() + LEAD_MINUTES) / step) * step : open;
+    const leadCut = isToday
+        ? Math.ceil((now.getHours() * 60 + now.getMinutes() + LEAD_MINUTES) / step) * step
+        : open;
 
     for (let start = Math.max(open, leadCut); start <= close - duration; start += step) {
         const s = toHHMM(start);
         const e = toHHMM(start + duration);
-        // no pasar del cierre
         if (toMinutes(e) > close) continue;
         yield { start: s, end: e };
     }
