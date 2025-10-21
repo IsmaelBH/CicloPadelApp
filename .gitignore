@@ -1,21 +1,36 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp
+
+# Node
 node_modules/
+npm-debug.log*
+
+# Expo / React Native
 .expo/
 .expo-shared/
 dist/
 build/
-*.log
-.env
-.env.local
-.env.*.local
+web-build/
+android/
+ios/
+*.keystore
+*.jks
 
-node_modules
-.expo
-.expo-shared
-dist
-build
-web-build
-*.log
+# Env
 .env
 .env.*
-functions/lib
-functions/dist
+!.env.example
+
+# Firebase Functions
+functions/node_modules/
+functions/lib/
+functions/dist/
+
+# Misc
+*.bak
+*.orig
