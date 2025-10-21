@@ -2,9 +2,9 @@
 export const DAY_OPEN = '09:00';
 export const DAY_CLOSE = '23:00';
 export const LEAD_MINUTES = 30;
-export type Duration = 90 | 120;
 
-export type Shift = 'mañana' | 'tarde' | 'noche';
+export type Duration = 90 | 120;
+export type Turno = 'mañana' | 'tarde' | 'noche';
 
 const toMinutes = (hhmm: string) => {
     const [h, m] = hhmm.split(':').map(Number);
@@ -26,23 +26,34 @@ export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: str
     return aS < bE && aE > bS;
 }
 
-export function getShiftRange(shift: Shift): { start: string; end: string } {
-    if (shift === 'mañana') return { start: '09:00', end: '12:00' };
-    if (shift === 'tarde') return { start: '12:00', end: '18:00' };
-    return { start: '18:00', end: '23:00' }; // noche
+export function getTurnRange(turno: Turno) {
+    // Mañana: 09–12 | Tarde: 12–18 | Noche: 18–23
+    if (turno === 'mañana') return { from: '09:00', to: '12:00' };
+    if (turno === 'tarde') return { from: '12:00', to: '18:00' };
+    return { from: '18:00', to: '23:00' };
 }
 
-export function* generateStarts(duration: Duration, dateISO: string, now: Date) {
-    const open = toMinutes(DAY_OPEN);
-    const close = toMinutes(DAY_CLOSE);
+/**
+ * Genera posibles inicios cada 30' DENTRO del turno pedido,
+ * respetando horario de hoy con 30' de anticipación.
+ */
+export function* generateStartsForTurn(
+    duration: Duration,
+    dateISO: string,
+    now: Date,
+    turno: Turno
+) {
     const step = 30; // minutos
+    const { from, to } = getTurnRange(turno);
+    const open = toMinutes(from);
+    const close = toMinutes(to);
 
     const isToday = new Date().toISOString().slice(0, 10) === dateISO;
-    const leadCut = isToday
+    const nowCut = isToday
         ? Math.ceil((now.getHours() * 60 + now.getMinutes() + LEAD_MINUTES) / step) * step
         : open;
 
-    for (let start = Math.max(open, leadCut); start <= close - duration; start += step) {
+    for (let start = Math.max(open, nowCut); start <= close - duration; start += step) {
         const s = toHHMM(start);
         const e = toHHMM(start + duration);
         if (toMinutes(e) > close) continue;
@@ -50,20 +61,3 @@ export function* generateStarts(duration: Duration, dateISO: string, now: Date) 
     }
 }
 
-export function* generateStartsByShift(
-    duration: Duration,
-    dateISO: string,
-    now: Date,
-    shift: Shift
-) {
-    const { start, end } = getShiftRange(shift);
-    const sMin = toMinutes(start);
-    const eMin = toMinutes(end);
-
-    const base = Array.from(generateStarts(duration, dateISO, now));
-    for (const it of base) {
-        const st = toMinutes(it.start);
-        const en = toMinutes(it.end);
-        if (st >= sMin && en <= eMin) yield it;
-    }
-}

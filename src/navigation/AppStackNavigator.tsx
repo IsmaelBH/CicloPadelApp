@@ -1,8 +1,9 @@
-// src/navigation/AppStackNavigator.tsx
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationOptions,
+} from '@react-navigation/native-stack';
 
-// Screens
 import HomeScreen from '../screens/HomeScreen';
 import MatchScreen from '../screens/MatchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -21,9 +22,13 @@ export type AppStackParamList = {
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
 
-const AppNavigator = () => {
+const screenOptions: NativeStackNavigationOptions = {
+  headerShown: false,
+};
+
+const AppStackNavigator = () => {
   return (
-    <Stack.Navigator initialRouteName="Home" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="Match" component={MatchScreen} />
       <Stack.Screen name="QrScreen" component={QrScreen} />
@@ -33,4 +38,4 @@ const AppNavigator = () => {
   );
 };
 
-export default AppNavigator;
+export default AppStackNavigator;

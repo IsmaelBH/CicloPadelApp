@@ -1,88 +1,62 @@
 // src/modules/match/availability.ts
-import { addMinutes, overlaps } from './time';
-import { Category, FixedBooking, MatchDoc } from './types';
-import { fetchDayFixed, fetchDayMatches } from './api';
+export type Turn = 'mañana' | 'tarde' | 'noche';
 
-type Turn = 'mañana' | 'tarde' | 'noche';
-type CourtId = 'court_1' | 'court_2' | 'court_3';
+type Slot = { start: string; end: string };
 
-const TURN_RANGES: Record<Turn, { start: string; end: string }> = {
+const TURN_WINDOWS: Record<Turn, Slot> = {
     mañana: { start: '09:00', end: '12:00' },
     tarde: { start: '12:00', end: '18:00' },
     noche: { start: '18:00', end: '23:00' },
 };
 
-function toMins(hhmm: string) {
-    const [h, m] = hhmm.split(':').map(Number);
-    return h * 60 + m;
-}
-function toHHMM(mins: number) {
-    const h = String(Math.floor(mins / 60)).padStart(2, '0');
-    const m = String(mins % 60).padStart(2, '0');
-    return `${h}:${m}`;
-}
-
-function generateStartsInRange(rangeStart: string, rangeEnd: string, duration: 90 | 120) {
-    const step = 30; // cada media hora
-    const out: Array<{ start: string; end: string }> = [];
-    for (let t = toMins(rangeStart); t + duration <= toMins(rangeEnd); t += step) {
-        const start = toHHMM(t);
-        const end = toHHMM(t + duration);
-        out.push({ start, end });
-    }
-    return out;
-}
-
-export async function getFreeHoursByTurn(params: {
-    date: string;
-    duration: 90 | 120;
-    turn: Turn;
-    category?: Category; // por si luego querés filtrar por categoría
-}) {
-    const { date, duration, turn } = params;
-
-    const [matches, fixed] = await Promise.all([
-        fetchDayMatches(date),
-        fetchDayFixed(date),
-    ]);
-
-    // Pre-indexado por cancha
-    const byCourt: Record<CourtId, { matches: MatchDoc[]; fixed: FixedBooking[] }> = {
-        court_1: { matches: [], fixed: [] },
-        court_2: { matches: [], fixed: [] },
-        court_3: { matches: [], fixed: [] },
+// Dada una hora "HH:mm", devuelve el turno correspondiente
+export function getTurnFromHour(hour: string): Turn {
+    const [h, m] = hour.split(':').map(Number);
+    const mins = h * 60 + m;
+    const inRange = (a: string, b: string) => {
+        const [ah, am] = a.split(':').map(Number);
+        const [bh, bm] = b.split(':').map(Number);
+        const A = ah * 60 + am;
+        const B = bh * 60 + bm;
+        return mins >= A && mins < B;
     };
-
-    for (const m of matches) byCourt[m.courtId].matches.push(m);
-    for (const f of fixed) byCourt[f.courtId].fixed.push(f);
-
-    const range = TURN_RANGES[turn];
-
-    // Por cada cancha verificamos qué inicios están libres; devolvemos tuplas (courtId, start)
-    const options: Array<{ courtId: CourtId; start: string; end: string }> = [];
-
-    (Object.keys(byCourt) as CourtId[]).forEach((courtId) => {
-        const starts = generateStartsInRange(range.start, range.end, duration);
-
-        starts.forEach(({ start, end }) => {
-            // check fijos
-            const hitFixed = byCourt[courtId].fixed.some((f) => {
-                const fEnd = addMinutes(f.start, f.duration);
-                return overlaps(start, end, f.start, fEnd);
-            });
-            if (hitFixed) return;
-
-            // check matches (no cancelados)
-            const hitMatch = byCourt[courtId].matches.some((m) => {
-                if (m.status === 'cancelado') return false;
-                return overlaps(start, end, m.start, m.end);
-            });
-            if (hitMatch) return;
-
-            options.push({ courtId, start, end });
-        });
-    });
-
-    return options.sort((a, b) => a.start.localeCompare(b.start));
+    if (inRange('09:00', '12:00')) return 'mañana';
+    if (inRange('12:00', '18:00')) return 'tarde';
+    return 'noche';
 }
 
+/**
+ * Genera horas cada 30' dentro del turno elegido.
+ * - Filtra horas pasadas si `date` es hoy
+ * - Aplica anticipo mínimo de 30 minutos
+ */
+export function listTurnHours(
+    turn: Turn,
+    date: string,
+    now: Date = new Date()
+): string[] {
+    const { start, end } = TURN_WINDOWS[turn];
+
+    const toMin = (hhmm: string) => {
+        const [h, m] = hhmm.split(':').map(Number);
+        return h * 60 + m;
+    };
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const fromMin = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+
+    const startMin = toMin(start);
+    const endMin = toMin(end);
+
+    // si es hoy, filtramos lo pasado con 30' de anticipo
+    const isSameDate =
+        new Date(date).toISOString().slice(0, 10) ===
+        new Date(now).toISOString().slice(0, 10);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minAllowed = isSameDate ? nowMin + 30 : -Infinity;
+
+    const slots: string[] = [];
+    for (let m = startMin; m < endMin; m += 30) {
+        if (m >= minAllowed) slots.push(fromMin(m));
+    }
+    return slots;
+}
